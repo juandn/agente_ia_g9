@@ -11,9 +11,6 @@ services:
               count: all
               capabilities: [gpu]
     volumes:
-    #  - /home/avionhp/BOB/ISTAC-CODIGOS-CNO-2025:/app
-    #  - d:\BOB\ISTAC-CODIGOS-CNO-2025:/app
-    # - c:\BOB\ISTAC-CODIGOS-CNO-2025:/app
     - c:\G9-IA\:/app
     working_dir: /app
     environment:

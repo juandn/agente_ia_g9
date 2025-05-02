@@ -39,5 +39,3 @@ RUN pip install llama-index
 RUN pip install llama-index-embeddings-openai
 RUN pip install llama-index-llms-openai-like
 
-# Comando por defecto (puedes cambiarlo según tu aplicación)
-# CMD ["bash"]

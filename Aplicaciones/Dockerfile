@@ -35,6 +35,8 @@ RUN pip install 'accelerate>=0.26.0'
 RUN pip install evaluate
 RUN pip install openpyxl
 RUN pip install pypdf
+RUN pip install pypandoc
+RUN pip install pypandoc_binary
 RUN pip install llama-index
 RUN pip install llama-index-embeddings-openai
 RUN pip install llama-index-llms-openai-like

@@ -26,7 +26,7 @@ class LMStudioEmbedding(BaseEmbedding):
     def __init__(
         self,
         model_name: str,
-        api_base: str = "http://127.0.0.1:8080/v1",
+        api_base: str = "http://192.168.20.10:1234/v1",
         api_key: str = "lm-studio",
         **kwargs: Any,
     ) -> None:
@@ -246,8 +246,8 @@ def digitaliza_documentos(listado_documentos, df_indice):
     return nodes
 
 
-FICHERO_INDICE = "/app/Datos/indice.xlsx"
-CARPETA_ENTRADA_DOCUMENTOS = "/app/Nuevos documentos/" # Carpeta donde se encuentran los documentos a procesar
+FICHERO_INDICE = "../Datos/indice.xlsx"
+CARPETA_ENTRADA_DOCUMENTOS = "../Nuevos_Documentos/" # Carpeta donde se encuentran los documentos a procesar
 
 listado_documentos = leer_archivos_carpeta(CARPETA_ENTRADA_DOCUMENTOS)
 
@@ -259,8 +259,8 @@ nodos = digitaliza_documentos(listado_documentos, df_indice)
 
 # 1. Instancia tu embedding personalizado (Ahora debería funcionar)
 custom_embed_model = LMStudioEmbedding(
-    model_name="text-embedding-mxbai-embed-large-v1",
-    api_base="http://openai.ull.es:8080/v1"
+    model_name="text-embedding-nomic-embed-text-v1.5-embedding",
+    api_base="http://192.168.20.10:1234/v1"
 )
 
 # 2. Configura LlamaIndex globalmente
@@ -268,8 +268,8 @@ Settings.embed_model = custom_embed_model
 
 # 3. Configura tu LLM 
 llm = OpenAILike(
-    model="gemma-3-27b-it", 
-    api_base="http://openai.ull.es:8080/v1",
+    model="deepseek/deepseek-r1-0528-qwen3-8b", 
+    api_base="http://192.168.20.10:1234/v1",
     api_key="lm-studio",
     is_chat_model=True,
 )
@@ -277,7 +277,7 @@ Settings.llm = llm
 
 
 print("Creando el índice VectorStoreIndex (usando embedding personalizado)...")
-index = VectorStoreIndex(nodes=nodos, show_progress=True)
+index = VectorStoreIndex(nodes=nodos,embed_model=custom_embed_model, show_progress=True)
 print("Índice creado con éxito.")
 
 
@@ -365,7 +365,7 @@ chat_engine = index.as_chat_engine(
     chat_mode="context",
     system_prompt=(
         "Eres un asistente experto que responde preguntas basándose únicamente "
-        "en la información proporcionada en los documentos PDF. "
+        "en la información proporcionada en los documentos PDF. Revisa en cada pregunta si hay mas información pertinente en la pagina siguiente a donde encuentres la respuesta."
         "Al final de la respuesta, en un párrafo separado cita tus fuentes si es posible usando los metadatos (ej: nombre_archivo, pagina y URL)."
     ),
     verbose=True
@@ -375,22 +375,29 @@ print("Chat Engine listo.")
 # 5. Interactuar ---
 print("\nIniciando conversación con el agente (usando LLM local):")
 try:
+    # Pregunta de control
+    pregunta = "Haz una lista de los archivos con los que trabajaras" # Ajusta la pregunta a tus docs
+    print(f"\nPregunta: {pregunta}")
+    response = chat_engine.chat(pregunta)
+    print("\nRespuesta del Agente:")
+    print(response)
+    
     # Primera pregunta
-    pregunta = "¿Quién es el responsable funcional de cada GLPI?" # Ajusta la pregunta a tus docs
+    pregunta = "¿Cuales son las fiestas de ámbito local de cada ciudad donde tiene facultades la universidad de oviedo?" # Ajusta la pregunta a tus docs
     print(f"\nPregunta: {pregunta}")
     response = chat_engine.chat(pregunta)
     print("\nRespuesta del Agente:")
     print(response)
 
     # Segunda pregunta (si quieres continuar)
-    pregunta = "¿cómo es la estructura de GLPI?"
+    pregunta = "¿cuales son las jornadas y horarios generales del PTGAS?"
     print(f"\nPregunta: {pregunta}")
     response = chat_engine.chat(pregunta)
     print("\nRespuesta del Agente:")
     print(response)
 
     # Segunda pregunta (si quieres continuar)
-    pregunta = "¿cuáles son los días entre festivos del 2025?"
+    pregunta = "¿Puedes hacer un resumen de la estructura de gobierno de la universidad de oviedo?"
     print(f"\nPregunta: {pregunta}")
     response = chat_engine.chat(pregunta)
     print("\nRespuesta del Agente:")

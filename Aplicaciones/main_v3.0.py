@@ -8,6 +8,7 @@ from llama_index.llms.openai_like import OpenAILike # O el LLM que uses
 from llama_index.core.node_parser import SemanticSplitterNodeParser
 from llama_index.core.chat_engine.types import ChatMode
 from llama_index.core.vector_stores import MetadataFilters, ExactMatchFilter # Para filtros
+from llama_index.readers.file import PDFReader
 
 import requests
 import time
@@ -17,16 +18,16 @@ from typing import Any, List
 import os
 import datetime
 
-FICHERO_INDICE = "/app/Datos/indice.xlsx"
-CARPETA_DATOS_SALVADOS = "/app/Datos/data_storage/"
-CARPETA_ENTRADA_DOCUMENTOS = "/app/Nuevos documentos/" # Carpeta donde se encuentran los documentos a procesar
-CARPETA_DOCUMENTOS_PROCESADOS = "/app/Documentos/"
+FICHERO_INDICE = "../Datos/indice.xlsx"
+CARPETA_DATOS_SALVADOS = "../Datos/data_storage/"
+CARPETA_ENTRADA_DOCUMENTOS = "../Nuevos_Documentos/" # Carpeta donde se encuentran los documentos a procesar
+CARPETA_DOCUMENTOS_PROCESADOS = "../Documentos/"
 NUMERO_MINIMO_PALABRAS = 0 # Número mínimo de palabras para considerar un trozo de texto
-UMBRAL_MAXIMO_PALABRAS = 3000 # Número máximo de palabras para considerar un trozo de texto
+UMBRAL_MAXIMO_PALABRAS = 300 # Número máximo de palabras para considerar un trozo de texto
 PALABRAS_SOLAPAMIENTO = 50 # Número de palabras que se solapan entre trozos consecutivos
-MODELO_EMBEDDINGS = "text-embedding-mxbai-embed-large-v1"
-MODELO_LLM = "gemma-3-27b-it" # Nombre del modelo LLM a usar
-SERVIDOR_LMSTUDIO = "http://openai.ull.es:8080/v1" # URL del servidor LM Studio
+MODELO_EMBEDDINGS = "text-embedding-nomic-embed-text-v1.5-embedding"
+MODELO_LLM = "google/gemma-3-12b" # Nombre del modelo LLM a usar
+SERVIDOR_LMSTUDIO = "http://192.168.20.10:1234/v1" # URL del servidor LM Studio
 
 class LMStudioEmbedding(BaseEmbedding):
     """
@@ -266,26 +267,65 @@ def digitaliza_un_documento(documento, fila_indice):
 
     try:
         if documento['extension'] == 'pdf':
-            reader = SimpleDirectoryReader(input_files=[documento['ruta_completa']])
+            pdf_reader = PDFReader(return_full_document=True)
+            
+            reader = SimpleDirectoryReader(input_files=[documento['ruta_completa']],file_extractor={".pdf": pdf_reader})
             documents = reader.load_data()
 
             #    Extrae el texto de cada objeto 'Document' y se unen los metadatos externos con los propios del documento.
             if documents:
+                # Asumimos que solo hay un documento porque return_full_document=True
+                full_pdf_document = documents[0]
+
+                # Transforma el documento completo en una lista de nodos (chunks semánticos)
+                # Esto reemplaza tu lógica de split_text_with_overlap
+                semantic_nodes = semantic_splitter.get_nodes_from_documents([full_pdf_document])
+                
                 indice_en_documento = 0
-                for trozo_texto in documents:
-                    if len(trozo_texto.text.split()) >= NUMERO_MINIMO_PALABRAS:
-                        nuevos_trozos_texto = split_text_with_overlap(trozo_texto.text, UMBRAL_MAXIMO_PALABRAS, PALABRAS_SOLAPAMIENTO)
-                        for nuevo_trozo_texto in nuevos_trozos_texto:
-                            nuevo_texto = {'texto': nuevo_trozo_texto, 'metadatos': fila_indice.to_dict()}
-                            nuevo_texto['metadatos'].update(trozo_texto.metadata)  # Agrega los metadatos del trozo de texto
-                            nuevo_texto['metadatos']['LongitudTexto'] = len(nuevo_trozo_texto)
-                            nuevo_texto['metadatos']['NumeroPalabras'] = len(nuevo_trozo_texto.split())
-                            nuevo_texto['metadatos']['NumeroTrozoEnDocumento'] = indice_en_documento  # Asigna un ID único al trozo de texto
-                            nuevo_texto['metadatos']['IdTrozoTexto'] = fila_indice['Identificador'] + '-' + str(indice_en_documento)  # Asigna un ID único al trozo de texto
-                            resultado.append(nuevo_texto)
-                            indice_en_documento += 1
+                for node in semantic_nodes:
+                    # Los nodos (chunks) ya vienen con sus propios metadatos, puedes acceder a ellos
+                    # como node.text para el contenido y node.metadata para los metadatos generados por el parser.
+                    
+                    if len(node.text.split()) >= NUMERO_MINIMO_PALABRAS:
+                        nuevo_texto = {'texto': node.text, 'metadatos': fila_indice.to_dict()}
+                        
+                        # Agrega los metadatos originales del documento (si los hay en full_pdf_document.metadata)
+                        # y los metadatos generados por el NodeParser (si los quieres preservar).
+                        # Node.metadata ya incluye el 'file_name', 'page_label' (si aplica), etc.
+                        nuevo_texto['metadatos'].update(full_pdf_document.metadata) 
+                        nuevo_texto['metadatos'].update(node.metadata) # Incluye metadatos del nodo (ej. sección, etc.)
+
+                        nuevo_texto['metadatos']['LongitudTexto'] = len(node.text)
+                        nuevo_texto['metadatos']['NumeroPalabras'] = len(node.text.split())
+                        nuevo_texto['metadatos']['NumeroTrozoEnDocumento'] = indice_en_documento
+                        nuevo_texto['metadatos']['IdTrozoTexto'] = fila_indice['Identificador'] + '-' + str(indice_en_documento)
+                        
+                        resultado.append(nuevo_texto)
+                        indice_en_documento += 1
             else:
                 print("No se pudo extraer texto del documento o el documento está vacío.")
+        # if documento['extension'] == 'pdf':
+        #     pdf_reader = PDFReader(return_full_document=True)
+        #     reader = SimpleDirectoryReader(input_files=[documento['ruta_completa']],file_extractor={".pdf": pdf_reader})
+        #     documents = reader.load_data()
+
+        #     #    Extrae el texto de cada objeto 'Document' y se unen los metadatos externos con los propios del documento.
+        #     if documents:
+        #         indice_en_documento = 0
+        #         for trozo_texto in documents:
+        #             if len(trozo_texto.text.split()) >= NUMERO_MINIMO_PALABRAS:
+        #                 nuevos_trozos_texto = split_text_with_overlap(trozo_texto.text, UMBRAL_MAXIMO_PALABRAS, PALABRAS_SOLAPAMIENTO)
+        #                 for nuevo_trozo_texto in nuevos_trozos_texto:
+        #                     nuevo_texto = {'texto': nuevo_trozo_texto, 'metadatos': fila_indice.to_dict()}
+        #                     nuevo_texto['metadatos'].update(trozo_texto.metadata)  # Agrega los metadatos del trozo de texto
+        #                     nuevo_texto['metadatos']['LongitudTexto'] = len(nuevo_trozo_texto)
+        #                     nuevo_texto['metadatos']['NumeroPalabras'] = len(nuevo_trozo_texto.split())
+        #                     nuevo_texto['metadatos']['NumeroTrozoEnDocumento'] = indice_en_documento  # Asigna un ID único al trozo de texto
+        #                     nuevo_texto['metadatos']['IdTrozoTexto'] = fila_indice['Identificador'] + '-' + str(indice_en_documento)  # Asigna un ID único al trozo de texto
+        #                     resultado.append(nuevo_texto)
+        #                     indice_en_documento += 1
+        #     else:
+        #         print("No se pudo extraer texto del documento o el documento está vacío.")        
         if documento['extension'] == 'dokuwiki':
             reader = SimpleDirectoryReader(input_files=[documento['ruta_completa']])
             documents = reader.load_data()            
@@ -322,10 +362,10 @@ def digitaliza_documentos(listado_documentos, df_indice):
 
     for documento in listado_documentos:
         # Verificar si el documento ya está en el índice
-        if documento['nombre_con_extension'] not in df_indice['Nombre Archivo'].values:
+        if documento['nombre_con_extension'] not in df_indice['Nombre PDF'].values:
             print(f"El documento <<<{documento['nombre_con_extension']}>>> no existe en el índice. ")
         else:
-            trozos_documento = digitaliza_un_documento(documento, df_indice[df_indice['Nombre Archivo'] == documento['nombre_con_extension']].iloc[0])
+            trozos_documento = digitaliza_un_documento(documento, df_indice[df_indice['Nombre PDF'] == documento['nombre_con_extension']].iloc[0])
 
             for i, data_dict in enumerate(trozos_documento):
                 # Crea un TextNode para cada diccionario en tu lista
@@ -365,12 +405,12 @@ def imprime_nodos(index):
     node_ids = list(docstore.docs.keys())
 
     print(f"Se encontraron {len(node_ids)} nodos en el docstore del índice.")
-    # print("IDs de nodos encontrados:")
-    # for node_id in node_ids:
-    #     nodo = docstore.get_node(node_id)
-    #     print(f'Nodo: {node_id}, {nodo.metadata["LongitudTexto"]} caracteres, {nodo.metadata["NumeroPalabras"]} palabras, {nodo.metadata["IdTrozoTexto"]}, {nodo.metadata["Nombre Archivo"]}, ')
-    #     if node_id in ['2025-09-0', '2025-09-1', '2025-09-2']:
-    #         print(f"Contenido del primer nodo: {nodo.get_content(metadata_mode='all')}") 
+    print("IDs de nodos encontrados:")
+    for node_id in node_ids:
+        nodo = docstore.get_node(node_id)
+        print(f'Nodo: {node_id}, {nodo.metadata["LongitudTexto"]} caracteres, {nodo.metadata["NumeroPalabras"]} palabras, {nodo.metadata["IdTrozoTexto"]}, {nodo.metadata["Nombre PDF"]}, ')
+        if node_id in ['2025-09-0', '2025-09-1', '2025-09-2']:
+            print(f"Contenido del primer nodo: {nodo.get_content(metadata_mode='all')}") 
 
 def mueve_documentos_ya_procesados(listado_documentos):
     """
@@ -532,15 +572,14 @@ def main():
     create_or_add_index()
     imprime_nodos(index)
 
-    chatear(index, llm, ["¿Quién es el responsable funcional de cada GLPI?",
-                        "¿cómo es la estructura de GLPI?",
-                        "¿cuáles son los días entre festivos del 2025?",
-                        "¿Qué es ZTNA?",
+    chatear(index, llm, ["¿Cuales son las fiestas de ámbito local de cada ciudad donde tiene facultades la universidad de oviedo?",
+                        "¿cuales son las jornadas y horarios generales del PTGAS?",
+                        "¿Puedes hacer un resumen de la estructura de gobierno de la universidad de oviedo?",
                          ])
-    chatear_con_filtros(index, llm, [
-                        "¿cuáles son los días entre festivos?",
-                         ],
-                         {"Estado": "Vigente"})
+    #chatear_con_filtros(index, llm, [
+    #                    "¿cuáles son los días entre festivos?",
+    #                     ],
+    #                    {"Estado": "Vigente"})
 
 
 if __name__ == "__main__":

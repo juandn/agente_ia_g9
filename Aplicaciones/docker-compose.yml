@@ -1,7 +1,7 @@
 #version: "3.8"
 services:
   app:
-    image: transformers_cuda_12_8_1_g9
+    image: 366d986cdb26
     runtime: nvidia
     deploy:
       resources:
@@ -11,7 +11,7 @@ services:
               count: all
               capabilities: [gpu]
     volumes:
-    - c:\G9-IA\:/app
+    - /home/diaznjuan/g9-ia-curso/agente_ia_g9:/app
     working_dir: /app
     environment:
       - HF_HOME=/app/huggingface # Establece la carpeta de Hugging Face
